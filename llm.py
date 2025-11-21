@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import httpx
 from openai import OpenAI
 from transformers import AutoTokenizer
@@ -9,41 +11,61 @@ from smolagents import OpenAIModel
 class llm_object:
     """Simple wrapper for an OpenAI-compatible chat endpoint."""
 
-    base_url: str
-    model: str
-    client: OpenAI
-
     def __init__(self) -> None:
-        """Set up the HTTP client and OpenAI client."""
-
         self.history = []
 
-        self.base_url = "https://fastchat-api.k8s.sg.iaea.org/v1/"
-        self.model = "Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
+        # Choose provider via env var: "custom" (default) or "groq"
+        provider = os.getenv("LLM_PROVIDER", "custom").lower()
+
+        # Shared tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
             "mistralai/Mistral-7B-Instruct-v0.3", use_fast=True
         )
 
+        if provider == "groq":
+            base_url = "https://api.groq.com/openai/v1/"
+            api_key = os.getenv("GROQ_API_KEY", "x")
+            model_name = os.getenv("GROQ_MODEL_ID", "llama-3.1-70b-versatile")
+            verify = True
+        else:
+            base_url = os.getenv(
+                "CUSTOM_LLM_BASE_URL",
+                "https://fastchat-api.k8s.sg.iaea.org/v1/",
+            )
+            api_key = os.getenv("CUSTOM_LLM_API_KEY", "x")
+            model_name = os.getenv(
+                "CUSTOM_LLM_MODEL_ID",
+                "Meta-Llama-3.1-70B-Instruct-AWQ-INT4",
+            )
+            verify = False  # self-signed cert on your FastChat
+
+        # Store on self *before* using them anywhere else
+        self.base_url = base_url
+        self.model_name = model_name
+
         httpx_client = httpx.Client(
             http2=True,
-            verify=False,
+            verify=verify,
             timeout=httpx.Timeout(timeout=360.0, connect=5.0),
         )
 
+        # Low-level OpenAI-compatible client
         self.client = OpenAI(
             base_url=self.base_url,
-            api_key="x",
+            api_key=api_key,
             http_client=httpx_client,
         )
 
+        # High-level smolagents model (this is what you pass to ToolCallingAgent)
         self.model = OpenAIModel(
-            model_id="Meta-Llama-3.1-70B-Instruct-AWQ-INT4",
-            api_base="https://fastchat-api.k8s.sg.iaea.org/v1/",
-            api_key="x",
+            model_id=self.model_name,
+            api_base=self.base_url,
+            api_key=api_key,
             flatten_messages_as_text=True,
             temperature=0.2,
             max_tokens=2048,
         )
+        # Reuse same HTTP client
         self.model.client = self.client
 
     def purge(self) -> None:
@@ -67,18 +89,17 @@ class llm_object:
         """Return a single chat completion for the given prompt."""
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
                 top_p=top_p,
                 seed=seed,
             )
-            return response.choices[0].message.content
-        except:
-            raise RuntimeError("Empty content in response.")
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            raise RuntimeError(f"Empty content in response: {e}")
 
     def render_history(self, add_generation_prompt: bool = True) -> str:
-        # Use the tokenizer's built-in chat template to render the memory
         return self.tokenizer.apply_chat_template(
             self.history,
             tokenize=False,

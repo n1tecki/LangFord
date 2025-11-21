@@ -2,6 +2,9 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from typing import List, Dict, Any
+
+from smolagents import tool
 
 URL = "https://finviz.com/news.ashx"
 
@@ -13,11 +16,12 @@ TS_RE = re.compile(
 )
 
 # Extra regexes just for classification:
-TIME_RE = re.compile(r"^\d{1,2}:\d{2}[AP]M$")  # 04:54AM, 8:01PM, ...
+TIME_RE = re.compile(r"^\d{1,2}:\d{2}[AP]M$")   # 04:54AM, 8:01PM, ...
 DATE_RE = re.compile(r"^[A-Z][a-z]{2}-\d{2}$")  # Nov-20, Dec-03, ...
 
 
-def scrape_finviz_news():
+def _scrape_finviz_news() -> List[Dict[str, Any]]:
+    """Low-level HTML scraper, returns raw items (no slicing)."""
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -46,7 +50,7 @@ def scrape_finviz_news():
     # --- 2) Parse with BeautifulSoup ---
     soup = BeautifulSoup(html, "html.parser")
 
-    items = []
+    items: List[Dict[str, Any]] = []
 
     # We look for all *external* article links (no finviz.com, no internal nav)
     for link in soup.find_all("a", href=True):
@@ -66,7 +70,7 @@ def scrape_finviz_news():
         if row is None:
             continue
 
-        # Full text of the row/container; Finviz rows typically look like:
+        # Finviz rows typically look like:
         # "08:06AM U.S. dollar registers six-month high before retreat www.marketwatch.com"
         row_text = row.get_text(" ", strip=True)
 
@@ -98,9 +102,32 @@ def scrape_finviz_news():
     return items
 
 
-if __name__ == "__main__":
-    news_items = scrape_finviz_news()
-    print(f"Found {len(news_items)} items")
+@tool
+def get_finviz_market_updates(num_news: int = 20, num_blogs: int = 20) -> Dict[str, Any]:
+    """
+    Use this to get news and an overview over the stock market.
+    Scrape the latest Finviz headlines and split them into two buckets so the agent
+    can build an overview of the current market situation.
 
-    real_news = [i for i in news_items if TIME_RE.match(i["date_or_time"])]
-    blogs = [i for i in news_items if DATE_RE.match(i["date_or_time"])]
+    Args:
+        num_news: Maximum number of real-time "News" headers to return. These are
+            intraday headlines with a time stamp like "08:06AM". Standard is 10.
+        num_blogs: Maximum number of "Blogs" headers to return. These are
+            headlines with a date stamp like "Nov-20" (blog/analysis posts). Standard is 10.
+
+    Returns:
+        A JSON-serializable dict with:
+            - "news": list of dicts, each with keys "date_or_time", "title", "url"
+              for live market news.
+            - "blogs": list of dicts, each with keys "date_or_time", "title", "url"
+              for blog/analysis content.
+    """
+    items = _scrape_finviz_news()
+
+    real_news = [i for i in items if TIME_RE.match(i["date_or_time"])]
+    blogs = [i for i in items if DATE_RE.match(i["date_or_time"])]
+
+    return {
+        "news": real_news[:num_news],
+        "blogs": blogs[:num_blogs],
+    }
