@@ -1,0 +1,10 @@
+smolagents
+openai
+httpx[http2]
+transformers
+tokenizers
+sentencepiece 
+protobuf
+beautifulsoup4
+python-telegram-bot-22.5
+python-dotenv
