@@ -15,11 +15,6 @@ TS_RE = re.compile(
     r"(?P<ts>(\d{1,2}:\d{2}[AP]M|[A-Z][a-z]{2}-\d{2}))\s+(?P<title>.+?)\s+\S+$"
 )
 
-# Extra regexes just for classification:
-TIME_RE = re.compile(r"^\d{1,2}:\d{2}[AP]M$")   # 04:54AM, 8:01PM, ...
-DATE_RE = re.compile(r"^[A-Z][a-z]{2}-\d{2}$")  # Nov-20, Dec-03, ...
-
-
 def _scrape_finviz_news() -> List[Dict[str, Any]]:
     """Low-level HTML scraper, returns raw items (no slicing)."""
     headers = {
@@ -103,7 +98,7 @@ def _scrape_finviz_news() -> List[Dict[str, Any]]:
 
 
 @tool
-def get_finviz_market_updates(num_news: int = 20, num_blogs: int = 20) -> Dict[str, Any]:
+def get_financial_market_updates(num_news: int = 20) -> Dict[str, Any]:
     """
     Use this to get news and an overview over the stock market.
     Scrape the latest Finviz headlines and split them into two buckets so the agent
@@ -112,22 +107,14 @@ def get_finviz_market_updates(num_news: int = 20, num_blogs: int = 20) -> Dict[s
     Args:
         num_news: Maximum number of real-time "News" headers to return. These are
             intraday headlines with a time stamp like "08:06AM". Standard is 10.
-        num_blogs: Maximum number of "Blogs" headers to return. These are
-            headlines with a date stamp like "Nov-20" (blog/analysis posts). Standard is 10.
 
     Returns:
         A JSON-serializable dict with:
             - "news": list of dicts, each with keys "date_or_time", "title", "url"
               for live market news.
-            - "blogs": list of dicts, each with keys "date_or_time", "title", "url"
-              for blog/analysis content.
     """
     items = _scrape_finviz_news()
 
-    real_news = [i for i in items if TIME_RE.match(i["date_or_time"])]
-    blogs = [i for i in items if DATE_RE.match(i["date_or_time"])]
-
     return {
-        "news": real_news[:num_news],
-        "blogs": blogs[:num_blogs],
+        "news": items[:num_news],
     }

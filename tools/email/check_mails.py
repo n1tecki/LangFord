@@ -6,7 +6,7 @@ from tools.email.get_graph_token import _get_ms_access_token
 
 
 @tool
-def outlook_important_emails(
+def check_mails(
     max_emails: int = 8,
     days_back: int = 3,
 ) -> Dict[str, Any]:
