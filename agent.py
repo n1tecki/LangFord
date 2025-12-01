@@ -4,7 +4,6 @@ from tools.calendar.create_events import create_events
 from tools.calendar.check_events import check_events
 from tools.weather.check_weather import get_weather
 from tools.news.get_news import news_report
-from tools.final_answer import final_answer
 from tools.email.check_mails import outlook_important_emails
 from tools.finance.market_overview import get_finviz_market_updates
 import datetime
@@ -16,7 +15,6 @@ TOOLS: List = [
     check_events,
     get_weather,
     news_report,
-    final_answer,
     outlook_important_emails,
     get_finviz_market_updates,
 ]
@@ -56,7 +54,7 @@ def create_agent(llm, system_prompt: str, max_step: int = 6) -> ToolCallingAgent
     agent = ToolCallingAgent(
         tools=TOOLS,
         model=llm.model,
-        verbosity_level=LogLevel.OFF,  # LogLevel.DEBUG
+        verbosity_level=LogLevel.DEBUG,  # LogLevel.DEBUG
         add_base_tools=False,
         max_steps=max_step,
     )

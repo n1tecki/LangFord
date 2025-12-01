@@ -10,8 +10,8 @@ from tools.calendar.create_events import create_events
 from tools.calendar.check_events import check_events
 from tools.weather.check_weather import get_weather
 from tools.news.get_news import news_report
-from tools.final_answer import final_answer
 from tools.email.check_mails import outlook_important_emails
+from tools.finance.market_overview import get_finviz_market_updates
 
 from telegram import Update
 from telegram.ext import (
@@ -30,8 +30,8 @@ TOOLS: List = [
     check_events,
     get_weather,
     news_report,
-    final_answer,
     outlook_important_emails,
+    get_finviz_market_updates,
 ]
 
 
@@ -69,7 +69,7 @@ def create_agent(llm, system_prompt: str, max_step: int = 6) -> ToolCallingAgent
     agent = ToolCallingAgent(
         tools=TOOLS,
         model=llm.model,
-        verbosity_level=LogLevel.OFF,  # use LogLevel.DEBUG for debugging
+        verbosity_level=LogLevel.DEBUG,  # use LogLevel.DEBUG for debugging
         add_base_tools=False,
         max_steps=max_step,
     )
@@ -169,7 +169,7 @@ def main():
     init_agents()
 
     # 2) Read Telegram token
-    token = os.getenv("TELEGRAM_API")
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("Please set TELEGRAM_BOT_TOKEN environment variable.")
 

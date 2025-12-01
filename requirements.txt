@@ -3,8 +3,14 @@ openai
 httpx[http2]
 transformers
 tokenizers
-sentencepiece 
+sentencepiece
 protobuf
 beautifulsoup4
-python-telegram-bot-22.5
+python-telegram-bot
 python-dotenv
+oogle-auth
+google-auth-oauthlib
+google-api-python-client
+trafilatura
+msal
+smolagents[litellm]
