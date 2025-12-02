@@ -11,17 +11,14 @@ def calendar_agent(model: str) -> ToolCallingAgent:
     calendar_agent = ToolCallingAgent(
         model=model,
         tools=[
-            check_events, 
+            check_events,
             create_events,
             resolve_date_expression
         ],
         name="calendar_agent",
-        description=(
-            prompts.description,
-        ),
-        instructions=(
-            prompts.system
-        ),
+        description=prompts.description,
+        instructions=prompts.system,
+        add_base_tools=False,
     )
 
     return calendar_agent

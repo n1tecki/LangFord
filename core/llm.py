@@ -9,9 +9,6 @@ from smolagents import OpenAIModel, LiteLLMModel
 
 
 class llm_object:
-    """Simple wrapper for an OpenAI-compatible chat endpoint."""
-
-class llm_object:
     def __init__(self) -> None:
         self.history = []
 

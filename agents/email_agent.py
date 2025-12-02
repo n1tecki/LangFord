@@ -12,12 +12,9 @@ def email_agent(model: str) -> ToolCallingAgent:
             check_mails,
         ],
         name="email_agent",
-        description=(
-            prompts.description,
-        ),
-        instructions=(
-            prompts.system
-        ),
+        description=prompts.description,
+        instructions=prompts.system,
+        add_base_tools=False,
     )
 
     return email_agent

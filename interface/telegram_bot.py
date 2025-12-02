@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from core.langford_service import init_langford, run_langford
 
 load_dotenv()
-logging.basicConfig(...)
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 

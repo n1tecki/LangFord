@@ -14,12 +14,9 @@ def news_agent(model: str) -> ToolCallingAgent:
             get_financial_market_updates
         ],
         name="news_agent",
-        description=(
-            prompts.description,
-        ),
-        instructions=(
-            prompts.system
-        ),
+        description=prompts.description,
+        instructions=prompts.system,
+        add_base_tools=False,
     )
 
     return news_agent

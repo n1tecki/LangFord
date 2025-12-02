@@ -12,12 +12,9 @@ def weather_agent(model: str) -> ToolCallingAgent:
             get_weather,
         ],
         name="weather_agent",
-        description=(
-            prompts.description,
-        ),
-        instructions=(
-            prompts.system
-        ),
+        description=prompts.description,
+        instructions=prompts.system,
+        add_base_tools=False,
     )
 
     return weather_agent
