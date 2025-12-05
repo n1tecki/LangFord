@@ -1,5 +1,5 @@
 from smolagents import tool
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, Union
 from datetime import datetime, date as Date
 import requests
 from dotenv import load_dotenv
@@ -28,77 +28,166 @@ def _geocode_location(location: str) -> Dict[str, float]:
     return {"lat": loc["lat"], "lng": loc["lng"]}
 
 
+def _extract_date_str(raw: Union[str, Dict[str, Any]]) -> str:
+    """
+    Normalize date input into 'YYYY-MM-DD'.
+
+    Accepts:
+    - simple string: '2025-12-05' or '2025-12-05T14:00:00'
+    - dicts from other tools, e.g.
+      {'date': '2025-12-05'} or
+      {'iso_datetime': '2025-12-05T14:00:00+01:00'}
+    """
+    if isinstance(raw, dict):
+        for key in ("date", "iso_datetime", "datetime", "iso"):
+            val = raw.get(key)
+            if isinstance(val, str) and val.strip():
+                raw = val
+                break
+        else:
+            raw = ""
+
+    s = str(raw).strip()
+    if not s:
+        return ""
+
+    if "T" in s:
+        s = s.split("T", 1)[0]
+
+    return s
+
+
+def _extract_hour(raw: Union[str, Dict[str, Any], None]) -> Optional[int]:
+    """
+    Extract an hour (0-23) from:
+    - "HH:MM"
+    - "2025-12-05T14:30:00"
+    - dicts with 'time' or 'iso_datetime'.
+    """
+    if raw is None:
+        return None
+
+    if isinstance(raw, dict):
+        for key in ("time", "iso_datetime", "datetime", "iso"):
+            val = raw.get(key)
+            if isinstance(val, str) and val.strip():
+                raw = val
+                break
+        else:
+            raw = ""
+
+    s = str(raw).strip()
+    if not s:
+        return None
+
+    # If full datetime, take part after 'T'
+    if "T" in s:
+        s = s.split("T", 1)[1]
+
+    # Now expect "HH:MM[:SS]"
+    try:
+        hour_str = s.split(":", 1)[0]
+        return int(hour_str)
+    except Exception:
+        return None
+
+
 @tool
 def get_weather(
     location: str,
-    date: str,
-    time: Optional[str] = None,
-) -> Dict:
+    date: Union[str, Dict[str, Any]],
+    time: Optional[Union[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """
-    Get Google Weather forecast for a given location and date/time.
+    Get Google Weather forecast for a given place and date/time.
 
-    Use this tool when the user asks for weather
-    at a specific place and date (time optional).
+    Use this when the user asks:
+    - "weather in X tomorrow",
+    - "weather in X on Friday at 15:00", etc.
 
     Args:
-        location (str):
+        location:
             Free-text location, e.g. "Vienna, Austria".
-        date (str):
-            Target date in "YYYY-MM-DD".
-        time (str, optional):
-            Target time in "HH:MM" (24h). If omitted, a
-            representative hour on that date is chosen.
+        date:
+            Target date (or datetime). Prefer "YYYY-MM-DD".
+            Can also be a dict from a date tool.
+        time:
+            Optional time (or datetime/dict). If omitted, a "middle of day"
+            hour is chosen for that date.
 
     Returns:
-        dict: Selected forecast with basic fields:
-              location, date, hour, description, temperature,
-              precipitationProbabilityPercent, plus latitude/longitude.
+        dict with:
+          - "location", "latitude", "longitude"
+          - "date", "hour", "utcOffset"
+          - "description", "icon"
+          - "temperature", "temperatureUnit"
+          - "precipitationProbabilityPercent"
+        or:
+          {"error": "..."} if something goes wrong.
     """
     units: str = "METRIC"
 
     if not WEATHER_API_KEY:
-        raise ValueError("GOOGLE_WEATHER_API_KEY env var is not set.")
+        return {"error": "GOOGLE_WEATHER_API env var is not set."}
 
-    # --- 1) Geocode the location ---
-    coords = _geocode_location(location)
+    # --- 1) Normalize date/time input ---
+    date_str = _extract_date_str(date)
+    if not date_str:
+        return {"error": "Invalid or empty date input.", "raw_date": str(date)}
+
+    try:
+        target_date = datetime.fromisoformat(date_str).date()
+    except Exception as e:
+        return {
+            "error": f"Invalid date format: {date_str!r}, expected YYYY-MM-DD",
+            "detail": str(e),
+        }
+
+    target_hour = _extract_hour(time)
+
+    # --- 2) Geocode the location ---
+    try:
+        coords = _geocode_location(location)
+    except Exception as e:
+        return {
+            "error": f"Failed to geocode location: {str(e)}",
+            "location": location,
+        }
+
     lat, lng = coords["lat"], coords["lng"]
 
-    # --- 2) Call Google Weather hourly forecast (up to 240 hours) ---
+    # --- 3) Call Google Weather hourly forecast ---
     weather_url = "https://weather.googleapis.com/v1/forecast/hours:lookup"
     params = {
         "key": WEATHER_API_KEY,
         "location.latitude": lat,
         "location.longitude": lng,
-        "hours": 240,  # up to ~10 days ahead
-        "pageSize": 240,  # avoid pagination
+        "hours": 240,      # up to ~10 days ahead
+        "pageSize": 240,   # avoid pagination
     }
     if units.upper() == "IMPERIAL":
         params["unitsSystem"] = "IMPERIAL"
 
-    resp = requests.get(weather_url, params=params, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        resp = requests.get(weather_url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {
+            "error": f"Failed to fetch weather data: {str(e)}",
+            "location": location,
+        }
 
     hours_list = data.get("forecastHours", [])
     if not hours_list:
-        raise ValueError("No forecastHours returned by Weather API.")
-
-    # --- 3) Parse target date/hour ---
-    try:
-        target_date = datetime.fromisoformat(date).date()
-    except ValueError:
-        raise ValueError(f"Invalid date format: {date!r}, expected YYYY-MM-DD")
-
-    target_hour: Optional[int] = None
-    if time:
-        try:
-            target_hour = int(time.split(":")[0])
-        except ValueError:
-            raise ValueError(f"Invalid time format: {time!r}, expected HH:MM")
+        return {
+            "error": "No forecastHours returned by Weather API.",
+            "location": location,
+        }
 
     # --- 4) Find the closest forecast hour for that date/time ---
     best = None
-    best_score = None
+    best_score: Optional[int] = None
 
     for fh in hours_list:
         dd = fh.get("displayDateTime")
@@ -109,24 +198,29 @@ def get_weather(
         if fh_date != target_date:
             continue
 
-        fh_hour = dd["hours"]  # local hour at location
+        fh_hour = dd.get("hours")
+        if fh_hour is None:
+            continue
 
         if target_hour is None:
-            # pick something "middle of the day"
+            # Middle of the day if no specific time requested
             score = abs(fh_hour - 12)
         else:
             score = abs(fh_hour - target_hour)
 
-        if best is None or score < best_score:
+        if best is None or best_score is None or score < best_score:
             best = fh
             best_score = score
 
     if best is None:
-        # Date is probably out of range (> ~10 days ahead)
-        raise ValueError(
-            f"No hourly forecast found for {date} at {location}. "
-            "Weather API typically covers only about 10 days ahead."
-        )
+        return {
+            "error": (
+                f"No hourly forecast found for {date_str} at {location}. "
+                "Weather API typically covers only ~10 days ahead."
+            ),
+            "location": location,
+            "date": date_str,
+        }
 
     # --- 5) Build a compact return payload ---
     dd = best.get("displayDateTime", {})
@@ -138,7 +232,7 @@ def get_weather(
     if "precipitation" in best and "probability" in best["precipitation"]:
         precip_prob = best["precipitation"]["probability"].get("percent")
 
-    result = {
+    result: Dict[str, Any] = {
         "location": location,
         "latitude": lat,
         "longitude": lng,

@@ -17,6 +17,7 @@ def news_agent(model: str) -> ToolCallingAgent:
         description=prompts.description,
         instructions=prompts.system,
         add_base_tools=False,
+        max_steps=3,
     )
 
     return news_agent

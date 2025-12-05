@@ -24,27 +24,15 @@ class llm_object:
             api_key = os.getenv("GROQ_API_KEY", "x")
             model_name = os.getenv("GROQ_MODEL_ID", "llama-3.1-70b-versatile")
 
-            httpx_client = httpx.Client(
-                http2=True,
-                verify=True,
-                timeout=httpx.Timeout(timeout=360.0, connect=5.0),
-            )
-
-            self.base_url = base_url
             self.model_name = model_name
 
-            self.client = OpenAI(
-                base_url=self.base_url,
-                api_key=api_key,
-                http_client=httpx_client,
-            )
-
             self.model = LiteLLMModel(
-                model_id=f"groq/{model_name}",  # e.g. "groq/llama-3.1-70b-versatile"
+                model_id=f"groq/{model_name}",
                 api_key=api_key,
                 temperature=0.2,
                 max_tokens=2048,
                 tool_choice="auto",
+                flatten_messages_as_text=True,
             )
 
         else:
@@ -79,6 +67,7 @@ class llm_object:
                 api_key=api_key,
                 temperature=0.2,
                 max_tokens=2048,
+                flatten_messages_as_text=True,
             )
             self.model.client = self.client
 

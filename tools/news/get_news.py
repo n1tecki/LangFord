@@ -1,5 +1,5 @@
 from smolagents import tool
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import requests
 import xml.etree.ElementTree as ET
 import trafilatura
@@ -108,10 +108,10 @@ def news_report(
     query: Optional[str] = None,
     location: Optional[str] = "Vienna, Austria",
     url: Optional[str] = None,
-    world_num: int = 5,
-    local_num: int = 5,
-    max_chars: int = 12000,
-    as_article: bool = False,
+    world_num: Union[int, str] = 5,
+    local_num: Union[int, str] = 5,
+    max_chars: Union[int, str] = 12000,
+    as_article: Union[bool, str] = False,
 ) -> Dict[str, Any]:
     """
     High-level news and article reporting tool.
@@ -148,11 +148,64 @@ def news_report(
         - "daily_brief": world + local headlines
         - "news_search": topic-based news
         - "article": extracted article text (+ matched title/url)
+        - plus optional "errors"/"error" fields instead of raising.
     """
+
+    # --- Lenient argument handling (same style as check_mails) ---
+    # world_num
+    try:
+        if isinstance(world_num, str):
+            digits = "".join(filter(str.isdigit, world_num))
+            world_num_int = int(digits) if digits else 5
+        else:
+            world_num_int = int(world_num)
+    except Exception:
+        world_num_int = 5
+
+    # local_num
+    try:
+        if isinstance(local_num, str):
+            digits = "".join(filter(str.isdigit, local_num))
+            local_num_int = int(digits) if digits else 5
+        else:
+            local_num_int = int(local_num)
+    except Exception:
+        local_num_int = 5
+
+    # max_chars
+    try:
+        if isinstance(max_chars, str):
+            digits = "".join(filter(str.isdigit, max_chars))
+            max_chars_int = int(digits) if digits else 12000
+        else:
+            max_chars_int = int(max_chars)
+    except Exception:
+        max_chars_int = 12000
+
+    # as_article (accept "true"/"false"/"1"/"0" etc)
+    if isinstance(as_article, str):
+        as_article_norm = as_article.strip().lower() in {
+            "true",
+            "1",
+            "yes",
+            "y",
+            "on",
+        }
+    else:
+        as_article_norm = bool(as_article)
+    # -------------------------------------------------------------
 
     # 1) Article mode: explicit URL
     if url:
-        article = _fetch_article(url, max_chars=max_chars)
+        try:
+            article = _fetch_article(url, max_chars=max_chars_int)
+        except Exception as e:
+            return {
+                "mode": "article",
+                "url": url,
+                "article": {"ok": False, "error": f"fetch_failed: {str(e)}"},
+            }
+
         return {
             "mode": "article",
             "url": url,
@@ -160,8 +213,17 @@ def news_report(
         }
 
     # 2) Article mode from title / query
-    if query and as_article:
-        candidates = _serper_news_search(query=query, num=3)
+    if query and as_article_norm:
+        try:
+            candidates = _serper_news_search(query=query, num=3)
+        except Exception as e:
+            return {
+                "mode": "article_search_failed",
+                "query": query,
+                "reason": "serper_error",
+                "detail": str(e),
+            }
+
         if not candidates:
             return {
                 "mode": "article_search_failed",
@@ -171,14 +233,13 @@ def news_report(
 
         best = candidates[0]  # keep it simple: first result
         link = best.get("link")
-        article = (
-            _fetch_article(link, max_chars=max_chars)
-            if link
-            else {
-                "ok": False,
-                "error": "no_link_in_result",
-            }
-        )
+        if link:
+            try:
+                article = _fetch_article(link, max_chars=max_chars_int)
+            except Exception as e:
+                article = {"ok": False, "error": f"fetch_failed: {str(e)}"}
+        else:
+            article = {"ok": False, "error": "no_link_in_result"}
 
         return {
             "mode": "article",
@@ -191,7 +252,16 @@ def news_report(
 
     # 3) Topic-based news search: query only
     if query:
-        items = _serper_news_search(query=query, num=world_num)
+        try:
+            items = _serper_news_search(query=query, num=world_num_int)
+        except Exception as e:
+            return {
+                "mode": "news_search",
+                "query": query,
+                "items": [],
+                "error": f"topic_search_failed: {str(e)}",
+            }
+
         return {
             "mode": "news_search",
             "query": query,
@@ -199,13 +269,28 @@ def news_report(
         }
 
     # 4) Default: daily brief (world + local)
-    world = _fetch_google_news_rss(num=world_num)
-    local_query = f"{location} news"
-    local = _serper_news_search(query=local_query, num=local_num)
+    world: List[Dict[str, Any]] = []
+    local: List[Dict[str, Any]] = []
+    errors: Dict[str, str] = {}
 
-    return {
+    try:
+        world = _fetch_google_news_rss(num=world_num_int)
+    except Exception as e:
+        errors["world"] = str(e)
+
+    local_query = f"{location} news" if location else "local news"
+    try:
+        local = _serper_news_search(query=local_query, num=local_num_int)
+    except Exception as e:
+        errors["local"] = str(e)
+
+    result: Dict[str, Any] = {
         "mode": "daily_brief",
         "location": location,
         "world": world,
         "local": local,
     }
+    if errors:
+        result["errors"] = errors
+
+    return result

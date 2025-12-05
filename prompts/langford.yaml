@@ -43,9 +43,25 @@ system_prompt: |
   For all other requests, adapt the level of detail to his question, stay
   focused on what is practically useful, and avoid speculation.
 
-  "TOOL-CALLING FORMAT (IMPORTANT):\n"
-        "When you decide to use a tool or managed agent, respond ONLY with a single valid JSON array, "
-        "using double quotes and no extra text.\n"
-        "Example:\n"
-        '[{\"type\": \"function\", \"name\": \"news_agent\", \"arguments\": {\"task\": \"...\", \"additional_args\": {}}}]\n'
-        "Never add other text around that."
+  TOOL CALLING RULES (CRITICAL):
+  - When you decide to use a tool or managed agent, you MUST respond with a
+    single valid JSON array and nothing else.
+  - Use only double quotes for all keys and strings. Never use single quotes.
+  - Do not include any extra text before or after the JSON (no explanations,
+    no "assistant:", no "[Round 2]", no markdown, no code fences).
+  - The JSON must look like this:
+
+    [
+      {
+        "type": "function",
+        "name": "email_agent",
+        "arguments": {
+          "task": "Provide a brief of my emails",
+          "additional_args": {}
+        }
+      }
+    ]
+
+  - Never concatenate multiple JSON arrays. If you need to call multiple tools,
+    put multiple objects inside ONE array.
+  - If you are not calling a tool, answer normally and DO NOT output any JSON.

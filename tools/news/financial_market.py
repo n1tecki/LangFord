@@ -2,7 +2,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 
 from smolagents import tool
 
@@ -14,6 +14,7 @@ URL = "https://finviz.com/news.ashx"
 TS_RE = re.compile(
     r"(?P<ts>(\d{1,2}:\d{2}[AP]M|[A-Z][a-z]{2}-\d{2}))\s+(?P<title>.+?)\s+\S+$"
 )
+
 
 def _scrape_finviz_news() -> List[Dict[str, Any]]:
     """Low-level HTML scraper, returns raw items (no slicing)."""
@@ -98,7 +99,7 @@ def _scrape_finviz_news() -> List[Dict[str, Any]]:
 
 
 @tool
-def get_financial_market_updates(num_news: int = 20) -> Dict[str, Any]:
+def get_financial_market_updates(num_news: Union[int, str] = 20) -> Dict[str, Any]:
     """
     Use this to get news and an overview over the stock market.
     Scrape the latest Finviz headlines and split them into two buckets so the agent
@@ -112,9 +113,25 @@ def get_financial_market_updates(num_news: int = 20) -> Dict[str, Any]:
         A JSON-serializable dict with:
             - "news": list of dicts, each with keys "date_or_time", "title", "url"
               for live market news.
+            - optional "error" key if scraping fails.
     """
-    items = _scrape_finviz_news()
+    # --- Lenient argument handling (same pattern as check_mails) ---
+    try:
+        if isinstance(num_news, str):
+            # Extract digits only, e.g. "20 news" -> 20
+            digits = "".join(filter(str.isdigit, num_news))
+            num_news_int = int(digits) if digits else 20
+        else:
+            num_news_int = int(num_news)
+    except Exception:
+        num_news_int = 20
+    # --------------------------------------------------------------
+
+    try:
+        items = _scrape_finviz_news()
+    except Exception as e:
+        return {"error": f"Failed to fetch Finviz news: {str(e)}"}
 
     return {
-        "news": items[:num_news],
+        "news": items[:num_news_int],
     }
